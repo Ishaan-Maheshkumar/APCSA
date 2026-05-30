@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>AP CSA Practice Generator</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<script src="https://js.puter.com/v2/"></script>
+
+<style>
+:root{
+  --primary:#2563eb;
+  --primary-dark:#1d4ed8;
+  --bg:#f8fafc;
+  --card:#ffffff;
+  --border:#dbe3ee;
+  --text:#1e293b;
+  --success:#10b981;
+  --danger:#ef4444;
+}
+*{margin:0;padding:0;box-sizing:border-box;font-family:Inter,Segoe UI,sans-serif;}
+body{background:var(--bg);color:var(--text);}
+nav{background:var(--primary);color:white;display:flex;justify-content:space-between;align-items:center;padding:15px 30px;}
+.logo{font-size:1.3rem;font-weight:700;}
+.nav-buttons{display:flex;gap:10px;}
+.nav-btn{border:none;background:rgba(255,255,255,.15);color:white;padding:10px 16px;border-radius:8px;cursor:pointer;}
+.nav-btn.active{background:white;color:var(--primary);}
+.container{max-width:1100px;margin:auto;padding:25px;}
+.card{background:var(--card);padding:24px;border-radius:16px;box-shadow:0 4px 16px rgba(0,0,0,.08);margin-bottom:20px;}
+button{cursor:pointer;}
+.primary-btn{background:var(--primary);color:white;border:none;padding:12px 18px;border-radius:10px;}
+.primary-btn:hover{background:var(--primary-dark);}
+.secondary-btn{border:none;background:#e2e8f0;padding:12px 18px;border-radius:10px;}
+.question{font-size:1.05rem;margin-bottom:20px;line-height:1.6;white-space:pre-wrap;}
+.choice{display:block;margin-bottom:12px;padding:12px;border:1px solid var(--border);border-radius:10px;cursor:pointer;}
+.choice:hover{background:#f1f5f9;}
+.choice input{margin-right:10px;}
+.choice.correct{border:2px solid var(--success);background:#ecfdf5;}
+.choice.wrong{:2px solid var(--danger);background:#fef2f2;}
+.controls{display:flex;gap:10px;margin-top:20px;}
+.counter{margin-top:15px;color:#64748b;font-weight:600;}
+.hidden{display:none;}
+textarea{width:100%;min-height:250px;resize:vertical;padding:15px;border-radius:10px;border:1px solid var(--border);}
+.feedback{background:#eff6ff;border-left:5px solid var(--primary);padding:15px;border-radius:10px;white-space:pre-wrap;line-height:1.6;}
+.loading{color:var(--primary);font-weight:bold;}
+.score-box{padding:15px;border-radius:10px;background:#ecfeff;margin-bottom:15px;}
+pre{background:#0f172a;color:#e2e8f0;padding:15px;border-radius:10px;overflow-x:auto;font-family:Consolas,monospace;line-height:1.4;}
+.unit-select{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px;}
+.unit-select label{display:flex;align-items:center;gap:4px;font-weight:500;background:#f1f5f9;padding:6px 10px;border-radius:8px;cursor:pointer;}
+.unit-select input{margin:0;}
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="logo">AP CSA Practice</div>
+  <div class="nav-buttons">
+    <button class="nav-btn active" id="mcqTab">MCQs</button>
+    <button class="nav-btn" id="frqTab">FRQs</button>
+  </div>
+</nav>
+
+<div class="container">
+
+  <!-- MCQ SECTION -->
+  <div id="mcqSection">
+
+    <!-- Unit selection card -->
+    <div class="card">
+      <h2>Select Units</h2>
+      <p>Choose one or more AP CSA units to target (units are numbered 1‑7).  <strong>0</strong> stands for “All Units”.</p>
+      <div id="unitList" class="unit-select"></div>
+      <button class="primary-btn" onclick="generateMCQs()">Generate New MCQ Set</button>
+    </div>
+
+    <!-- Question card -->
+    <div class="card">
+      <h2>Question</h2>
+      <div id="mcqArea">
+        <div id="questionCard"></div>
+        <div class="controls">
+          <button class="secondary-btn" onclick="prevQuestion()">Previous</button>
+          <button class="secondary-btn" onclick="nextQuestion()">Next</button>
+          <button class="primary-btn" onclick="submitMCQ()">Submit</button>
+        </div>
+        <div class="counter" id="questionCounter"></div>
+      </div>
+    </div>
+
+    <!-- Results card -->
+    <div class="card">
+      <h2>Results</h2>
+      <div id="mcqFeedback"></div>
+    </div>
+  </div>
+
+  <!-- FRQ SECTION -->
+  <div id="frqSection" class="hidden">
+    <div class="card">
+      <h2>Free Response Practice</h2>
+      <button class="primary-btn" onclick="generateFRQ()">Generate FRQ</button>
+      <div id="frqQuestion"></div>
+    </div>
+
+    <div class="card">
+      <h2>Your Response</h2>
+      <textarea id="frqAnswer" placeholder="Write your Java solution here..."></textarea>
+      <button class="primary-btn" onclick="gradeFRQ()">Grade FRQ</button>
+      <div id="frqFeedback"></div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+const MODEL = "gpt-4.1";
+let mcqs = [];
+let currentQuestion = 0;
+let userAnswers = {};
+let currentFRQ = "";
+
+// ----- UNIT SELECTION SETUP -----
+const units = [
+  {id:'1', name:'Basic Programming'},
+  {id:'2', name:'Object‑Oriented Programming'},
+  {id:'3', name:'Data Structures & Algorithms'},
+  {id:'4', name:'Java Language Features'},
+  {id:'5', name:'Programming Patterns'},
+  {id:'6', name:'Collections'},
+  {id:'7', name:'Input/Output'},
+  {id:'0', name:'All Units'} // 0 represents "All"
+];
+
+// Render checkboxes
+const unitList = document.getElementById('unitList');
+units.forEach(u=>{
+  const lbl = document.createElement('label');
+  lbl.innerHTML = `<input type="checkbox" value="${u.id}"${u.id==='0'?' checked':''}>${u.name}`;
+  unitList.appendChild(lbl);
+});
+
+
+// ----- NAVIGATION -----
+const mcqTab = document.getElementById("mcqTab");
+const frqTab = document.getElementById("frqTab");
+
+mcqTab.onclick = () => {
+  mcqTab.classList.add("active");
+  frqTab.classList.remove("active");
+  document.getElementById("mcqSection").classList.remove("hidden");
+  document.getElementById("frqSection").classList.add("hidden");
+};
+
+frqTab.onclick = () => {
+  frqTab.classList.add("active");
+  mcqTab.classList.remove("active");
+  document.getElementById("frqSection").classList.remove("hidden");
+  document.getElementById("mcqSection").classList.add("hidden");
+};
+
+// ----- MCQ -----
+async function generateMCQs() {
+  document.getElementById("questionCard").innerHTML = "<div class='loading'>Generating...</div>";
+
+  const selectedIds = [...document.querySelectorAll('#unitList input:checked')].map(cb => cb.value);
+  let unitText = '';
+  if (selectedIds.includes('0') || selectedIds.length===0) {
+    unitText = 'All Units';
+  } else {
+    unitText = selectedIds.join(', ');
+  }
+
+  const prompt = `
+Generate exactly 10 AP Computer Science A MCQs for the following units: ${unitText}.
+Return ONLY valid JSON of the form:
+{
+  "questions":[
+    {
+      "question":"formatted question text",
+      "choices":{"A":"...","B":"...","C":"...","D":"..."},
+      "answer":"A",
+      "explanation":"why correct answer is right + why others are wrong"
+    }
+  ]
+}
+Rules:
+• Java code must be properly formatted with \\n indentation.
+• Do NOT compress code into single lines.
+• Each MCQ must resemble a real AP exam question.
+• **Each of the four answer choices (A‑D) must be unique.** No two choice texts may be identical, even if one is a transposition of words.
+• If the model produces duplicate choices, regenerate that question until uniqueness is achieved.
+  `;
+
+  try {
+    const res = await puter.ai.chat(prompt, { model: MODEL });
+    const data = JSON.parse(res.message.content.trim());
+
+    // Ensure uniqueness for each question
+    const ensureUnique = q => new Set(Object.values(q.choices)).size === 4;
+    const regenerate = async orig => {
+      const regenPrompt = `
+The following question has duplicate answer choice text:
+${JSON.stringify(orig)}
+Please regenerate ONLY this question so that all four choices are distinct while keeping the same question, correct answer, and explanation. Return the single question object in the same JSON format.
+`;
+      const r = await puter.ai.chat(regenPrompt, { model: MODEL });
+      return JSON.parse(r.message.content.trim()).questions[0];
+    };
+
+    for (let i=0;i<data.questions.length;i++) {
+      if (!ensureUnique(data.questions[i])) {
+        data.questions[i] = await regenerate(data.questions[i]);
+      }
+    }
+
+    mcqs = data.questions;
+    currentQuestion = 0;
+    userAnswers = {};
+    renderQuestion();
+  } catch (e) {
+    document.getElementById("questionCard").textContent = "Error: "+e.message;
+  }
+}
+
+function renderQuestion(){
+  if(!mcqs.length) return;
+  const q = mcqs[currentQuestion];
+  const selected = userAnswers[currentQuestion];
+  document.getElementById("questionCounter").textContent = `Question ${currentQuestion+1} of ${mcqs.length}`;
+  document.getElementById("questionCard").innerHTML = `
+    <div class="question"><pre>${escapeHtml(q.question)}</pre></div>
+    ${choiceHTML('A',q.choices.A,selected)}
+    ${choiceHTML('B',q.choices.B,selected)}
+    ${choiceHTML('C',q.choices.C,selected)}
+    ${choiceHTML('D',q.choices.D,selected)}
+    ${selected && selected!==q.answer ? `
+      <div class="feedback">
+        ❌ Incorrect<br>
+        Correct Answer: ${q.answer}<br>
+        Explanation:<pre>${escapeHtml(q.explanation)}</pre>
+      </div>`:""}
+  `;
+  document.querySelectorAll('input[name="mcq"]').forEach(r=>{
+    r.addEventListener("change",()=>{userAnswers[currentQuestion]=r.value;});
+  });
+}
+
+function choiceHTML(letter,txt,selected){
+  return `
+    <label class="choice ${selected===letter?'selected':''}">
+      <input type="radio" name="mcq" value="${letter}"${selected===letter?'checked':''}>
+      <strong>${letter}.</strong> ${escapeHtml(txt)}
+    </label>`;
+}
+
+function nextQuestion(){ if(currentQuestion<mcqs.length-1){currentQuestion++;renderQuestion();} }
+function prevQuestion(){ if(currentQuestion>0){currentQuestion--;renderQuestion();} }
+
+async function submitMCQ(){
+  let correct=0;
+  mcqs.forEach((q,i)=>{ if(userAnswers[i]===q.answer) correct++; });
+
+  const percent = Math.round((correct/mcqs.length)*100);
+  let apScore=1;
+  if(percent>=85) apScore=5;
+  else if(percent>=70) apScore=4;
+  else if(percent>=55) apScore=3;
+  else if(percent>=40) apScore=2;
+
+  const wrongQs = mcqs.map((q,i)=>({
+    number:i+1,
+    user:userAnswers[i]||"Blank",
+    correct:q.answer
+  })).filter(q=>q.user!==q.correct);
+
+  const analysisPrompt = `
+A student took AP CSA MCQs.
+Score: ${correct}/${mcqs.length}
+Estimated AP Score: ${apScore}
+For each wrong question:
+Explain WHY the answer is wrong and what concept caused the mistake.
+Wrong questions: ${JSON.stringify(wrongQs)}
+Be clear and structured.
+`;
+  const box=document.getElementById("mcqFeedback");
+  box.innerHTML="<div class='loading'>Analyzing...</div>";
+  const res=await puter.ai.chat(analysisPrompt,{model:MODEL});
+  box.innerHTML=`
+    <div class="score-box"><h3>${correct}/${mcqs.length}</h3><h3>AP Score: ${apScore}/5</h3></div>
+    <div class="feedback">${escapeHtml(res.message.content)}</div>`;
+  highlightAnswers();
+}
+
+function highlightAnswers(){
+  const q=mcqs[currentQuestion];
+  document.querySelectorAll('input[name="mcq"]').forEach(inp=>{
+    const lbl=inp.closest('.choice');
+    lbl.classList.remove('correct','wrong');
+    if(inp.checked && inp.value!==q.answer) lbl.classList.add('wrong');
+    if(inp.value===q.answer) lbl.classList.add('correct');
+  });
+}
+
+// ----- FRQ -----
+async function generateFRQ(){
+  const area=document.getElementById("frqQuestion");
+  area.innerHTML="<div class='loading'>Generating...</div>";
+  const prompt=`Generate one AP Computer Science A FRQ. Include parts A, B, C. No solution. Java only.`;
+  const res=await puter.ai.chat(prompt,{model:MODEL});
+  currentFRQ=res.message.content;
+  area.innerHTML=`<pre>${escapeHtml(currentFRQ)}</pre>`;
+}
+
+async function gradeFRQ(){
+  const answer=document.getElementById("frqAnswer").value;
+  const out=document.getElementById("frqFeedback");
+  out.innerHTML="<div class='loading'>Grading...</div>";
+  const prompt=`You are an AP CSA grader.
+FRQ:
+${currentFRQ}
+Student Answer:
+${answer}
+Give:
+- Score (1‑5)
+- Point breakdown
+- Mistakes
+- Why mistakes are wrong
+- Improvements
+- Missing concepts`;
+  const res=await puter.ai.chat(prompt,{model:MODEL});
+  out.innerHTML=`<div class="feedback">${escapeHtml(res.message.content)}</div>`;
+}
+
+// ----- HELPER -----
+function escapeHtml(text){
+  const div=document.createElement("div");
+  div.textContent=text;
+  return div.innerHTML;
+}
+</script>
+</body>
+</html>
